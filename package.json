@@ -1,0 +1,33 @@
+{
+  "name": "my-omni",
+  "version": "0.1.0",
+  "description": "MY OMNI is a native Windows coding workbench with a source editor, project explorer, AI chat, and OmniRoute integration.",
+  "private": false,
+  "main": "electron/main/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test dist/tests/**/*.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "package": "electron-builder"
+  },
+  "keywords": [
+    "ide",
+    "windows",
+    "omniroute",
+    "winforms",
+    "native-windows",
+    "monaco",
+    "electron"
+  ],
+  "author": "MY OMNI",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "electron": "^33.1.0",
+    "electron-builder": "^25.1.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
