@@ -110,6 +110,10 @@ namespace MyOmniNative
         private readonly ToolTip _navigationToolTip = new ToolTip();
         private readonly ToolStripMenuItem _aiSidebarMenu = new ToolStripMenuItem("AI Chat Sidebar") { Checked = true, CheckOnClick = true };
         private readonly System.Windows.Forms.Timer _highlightTimer = new System.Windows.Forms.Timer();
+    private readonly System.Windows.Forms.Timer _sidebarAnimationTimer = new System.Windows.Forms.Timer();
+    private readonly System.Windows.Forms.Timer _chatAnimationTimer = new System.Windows.Forms.Timer();
+    private int _sidebarAnimationTarget;
+    private int _chatAnimationTarget;
         private Form _profileWindow;
         private TabControl _settingsTabs;
         private CheckBox _autoStartGatewayCheckBox;
@@ -178,6 +182,10 @@ namespace MyOmniNative
                 _pendingHighlight = null;
                 if (document != null) HighlightDocument(document);
             };
+            _sidebarAnimationTimer.Interval = 16;
+            _sidebarAnimationTimer.Tick += AnimateWorkspaceSidebar;
+            _chatAnimationTimer.Interval = 16;
+            _chatAnimationTimer.Tick += AnimateAssistantPanel;
             FormClosing += OnFormClosing;
             KeyDown += OnFormKeyDown;
             Shown += async delegate
@@ -551,6 +559,8 @@ namespace MyOmniNative
             button.Font = new Font("Segoe UI Symbol", 16F);
             button.Cursor = Cursors.Hand;
             button.AccessibleName = name;
+            button.MouseEnter += delegate { button.BackColor = Color.FromArgb(24, 38, 58); button.ForeColor = _accentColor; };
+            button.MouseLeave += delegate { button.BackColor = Color.FromArgb(11, 17, 32); button.ForeColor = Color.FromArgb(178, 191, 207); };
             _navigationToolTip.SetToolTip(button, name);
             button.Click += delegate { SwitchSidebarView(view); };
             host.Controls.Add(button);
@@ -1368,6 +1378,10 @@ namespace MyOmniNative
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderSize = 1;
             button.Height = Math.Max(button.Height, 30);
+            Color normalBackground = primary ? _accentColor : Color.FromArgb(23, 35, 53);
+            Color hoverBackground = primary ? Color.FromArgb(149, 221, 255) : Color.FromArgb(31, 48, 70);
+            button.MouseEnter += delegate { button.BackColor = hoverBackground; };
+            button.MouseLeave += delegate { button.BackColor = normalBackground; };
             button.AccessibleDescription = primary ? "OpenEditorPrimary" : "OpenEditorSecondary";
             button.FlatAppearance.BorderColor = primary ? _accentColor : Color.FromArgb(45, 59, 80);
             button.BackColor = primary ? _accentColor : Color.FromArgb(23, 35, 53);
@@ -1402,8 +1416,88 @@ namespace MyOmniNative
         private void SetAssistantVisible(bool visible)
         {
             if (_editorSplit == null) return;
-            _editorSplit.Panel2Collapsed = !visible;
+            if (visible)
+            {
+                _editorSplit.Panel2Collapsed = false;
+                _editorSplit.Panel2MinSize = 280;
+                int available = _editorSplit.ClientSize.Width - _editorSplit.SplitterWidth;
+                _chatAnimationTarget = Math.Max(280, Math.Min(420, available - 700));
+                if (_chatAnimationTarget < 280) _chatAnimationTarget = 280;
+                _chatAnimationTimer.Start();
+            }
+            else
+            {
+                _editorSplit.Panel2MinSize = 0;
+                _chatAnimationTarget = 48;
+                _chatAnimationTimer.Start();
+            }
             _aiSidebarMenu.Checked = visible;
+        }
+
+        private void AnimateAssistantPanel(object sender, EventArgs e)
+        {
+            if (_editorSplit == null || _editorSplit.IsDisposed)
+            {
+                _chatAnimationTimer.Stop();
+                return;
+            }
+            int distance = _editorSplit.SplitterDistance;
+            int difference = _chatAnimationTarget - distance;
+            if (Math.Abs(difference) <= 12)
+            {
+                _editorSplit.SplitterDistance = _chatAnimationTarget;
+                _chatAnimationTimer.Stop();
+                if (_chatAnimationTarget == 48)
+                {
+                    _editorSplit.Panel2Collapsed = true;
+                    _editorSplit.Panel2MinSize = 280;
+                }
+                return;
+            }
+            _editorSplit.SplitterDistance = distance + difference / 4;
+        }
+
+        private void ToggleWorkspaceSidebar()
+        {
+            if (_workspaceSplit == null) return;
+            SetWorkspaceSidebarVisible(_workspaceSplit.Panel1Collapsed);
+        }
+
+        private void SetWorkspaceSidebarVisible(bool visible)
+        {
+            if (_workspaceSplit == null) return;
+            if (visible)
+            {
+                _workspaceSplit.Panel1Collapsed = false;
+                _workspaceSplit.Panel1MinSize = 0;
+                _sidebarAnimationTarget = 260;
+            }
+            else
+            {
+                _workspaceSplit.Panel1MinSize = 0;
+                _sidebarAnimationTarget = 48;
+            }
+            _sidebarAnimationTimer.Start();
+        }
+
+        private void AnimateWorkspaceSidebar(object sender, EventArgs e)
+        {
+            if (_workspaceSplit == null || _workspaceSplit.IsDisposed)
+            {
+                _sidebarAnimationTimer.Stop();
+                return;
+            }
+            int distance = _workspaceSplit.SplitterDistance;
+            int difference = _sidebarAnimationTarget - distance;
+            if (Math.Abs(difference) <= 10)
+            {
+                _workspaceSplit.SplitterDistance = _sidebarAnimationTarget;
+                _sidebarAnimationTimer.Stop();
+                if (_sidebarAnimationTarget == 48) _workspaceSplit.Panel1Collapsed = true;
+                else _workspaceSplit.Panel1MinSize = 160;
+                return;
+            }
+            _workspaceSplit.SplitterDistance = distance + difference / 4;
         }
 
         private void ShowAssistantAndFocusKey()
@@ -1428,6 +1522,8 @@ namespace MyOmniNative
                 SaveAsActiveDocument();
             else if (e.Control && e.Shift && e.KeyCode == Keys.I)
                 ToggleAssistant();
+            else if (e.Control && e.KeyCode == Keys.B)
+                ToggleWorkspaceSidebar();
             else if (e.Control && e.KeyCode == Keys.N)
             {
                 NewFile();
@@ -1598,6 +1694,7 @@ namespace MyOmniNative
             root.Expand();
             _tree.EndUpdate();
             AddRecentProject(_workspaceRoot);
+            SetWorkspaceSidebarVisible(true);
             RefreshBranchStatus();
             if (_sidebarTitle.Text == "EXPLORER") SwitchSidebarView("Explorer");
             _fileStatus.Text = String.Format("{0} text files loaded", _workspaceFileCount);
@@ -3996,6 +4093,10 @@ namespace MyOmniNative
             StopOwnedGatewayProcess();
             _highlightTimer.Stop();
             _highlightTimer.Dispose();
+            _sidebarAnimationTimer.Stop();
+            _sidebarAnimationTimer.Dispose();
+            _chatAnimationTimer.Stop();
+            _chatAnimationTimer.Dispose();
         }
 
         private void StopOwnedGatewayProcess()
